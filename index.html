@@ -3320,6 +3320,20 @@ V6.15 - STATUS OPERACIONAL BASEADO EM ATIVIDADE REAL
 }
 </style>
 
+<style id="bdc-v616-setores">
+/* BDC V6.16 - SELETOR DE SETOR NO PAINEL DEV */
+.bdc-setor-bloco{margin-top:12px;padding:11px;border:1px solid #35536a;background:#122536;border-radius:9px}
+.bdc-setor-linha{display:flex;gap:9px;align-items:flex-end;flex-wrap:wrap}
+.bdc-setor-campo{flex:1;min-width:170px}
+.bdc-setor-campo label{font-size:10px;color:#a8d8ef;font-weight:800;margin-bottom:6px}
+.bdc-setor-campo select{font-size:12px;min-height:39px;padding:7px 9px;width:100%;background:#1a3041;color:#edf7ff;border:1px solid #46647d}
+.bdc-setor-salvar{border:1px solid #207a9a;background:#087fac;color:#fff;border-radius:7px;padding:10px 12px;min-height:39px;font-size:11px;font-weight:800;cursor:pointer}
+.bdc-setor-salvar:disabled{opacity:.55;cursor:wait}
+.bdc-setor-nota{font-size:10px;color:#aebfcf;margin-top:7px}
+.bdc-setor-aviso{margin:0 0 12px;padding:10px 12px;border:1px solid #936b25;background:#332918;color:#f6d48a;border-radius:8px;font-size:11px}
+@media(max-width:500px){.bdc-setor-salvar{width:100%}}
+@media print{.bdc-setor-bloco,.bdc-setor-aviso{display:none!important}}
+</style>
 </head>
 
 
@@ -9677,11 +9691,33 @@ async function abrirPainelDev(){
  document.getElementById("devAbaPendentes").classList.add("ativo");document.getElementById("devAbaTodos").classList.remove("ativo");
  esconderMensagem("mensagemDev");mostrarTela("telaDev");await carregarUsuariosDev();
 }
+let bdcSetoresDev=[];
+let bdcVinculosDev=new Map();
+let bdcControleSetoresDisponivel=false;
+
+async function carregarDadosSetoresDev(){
+  bdcControleSetoresDisponivel=false;
+  const [rs, rv]=await Promise.all([
+    db.rpc("bdc_dev_listar_setores"),
+    db.rpc("bdc_dev_listar_vinculos_setor")
+  ]);
+  if(rs.error || rv.error){
+    console.warn("Painel setores indisponível",rs.error||rv.error);
+    mostrarMensagem("mensagemDev","Controle de setores ainda não disponível. Execute primeiro o SQL V6.16 no Supabase. As demais funções DEV permanecem acessíveis.","aviso");
+    return;
+  }
+  bdcSetoresDev=rs.data||[];
+  bdcVinculosDev=new Map((rv.data||[]).map(v=>[String(v.usuario_id),v.setor_id]));
+  bdcControleSetoresDisponivel=true;
+}
+
 async function carregarUsuariosDev(){
  const l=document.getElementById("listaUsuariosDev");l.innerHTML='<div class="dev-vazio">Carregando usuários...</div>';
  const {data,error}=await db.rpc("dev_listar_usuarios");
  if(error){l.innerHTML='<div class="dev-vazio">Não foi possível carregar.</div>';mostrarMensagem("mensagemDev",error.message);return;}
- usuariosDev=data||[];atualizarResumoDev();renderizarUsuariosDev();atualizarBadgePendentesDev();
+ usuariosDev=data||[];
+ await carregarDadosSetoresDev();
+ atualizarResumoDev();renderizarUsuariosDev();atualizarBadgePendentesDev();
 }
 function atualizarResumoDev(){
  document.getElementById("devTotalPendentes").textContent=usuariosDev.filter(u=>u.status==="PENDENTE").length;
@@ -9696,20 +9732,63 @@ function renderizarUsuariosDev(){
  if(!us.length){l.innerHTML='<div class="dev-vazio">'+(abaDevAtual==="PENDENTES"?"Nenhum cadastro aguardando aprovação.":"Nenhum usuário encontrado.")+'</div>';return;}
  l.innerHTML="";
  us.forEach(u=>{
-  const c=document.createElement("div");c.className="dev-usuario";const proprio=u.id===usuarioAtual.id;let a="";
+  const c=document.createElement("div");c.className="dev-usuario";
+  const proprio=u.id===usuarioAtual.id;
+  let a="";
   if(u.status==="PENDENTE")a=`<button class="dev-btn aprovar" onclick="alterarStatusUsuarioDev('${u.id}','APROVADO')">APROVAR</button><button class="dev-btn bloquear" onclick="alterarStatusUsuarioDev('${u.id}','BLOQUEADO')">BLOQUEAR</button>`;
   else if(u.status==="APROVADO"&&!proprio)a=`<button class="dev-btn bloquear" onclick="alterarStatusUsuarioDev('${u.id}','BLOQUEADO')">BLOQUEAR</button>`;
   else if(u.status==="BLOQUEADO")a=`<button class="dev-btn desbloquear" onclick="alterarStatusUsuarioDev('${u.id}','APROVADO')">DESBLOQUEAR</button>`;
   else a=`<button class="dev-btn" disabled>CONTA DEV PRINCIPAL</button>`;
   const loja=[u.loja_codigo,u.loja_nome].filter(Boolean).join(" ")||"SEM LOJA BASE";
-  c.innerHTML=`<div class="dev-usuario-topo"><div><div class="dev-usuario-nome">${escaparHTML(u.nome||"SEM NOME")}</div><div class="dev-usuario-email">${escaparHTML(u.email||"")}</div></div><span class="dev-status ${escaparHTML(u.status)}">${escaparHTML(u.status)}</span></div><div class="dev-usuario-meta"><div class="dev-meta"><span>LOJA BASE</span><strong>${escaparHTML(loja)}</strong></div><div class="dev-meta"><span>PERFIL</span><strong>${escaparHTML(u.perfil||"-")}</strong></div></div><div class="dev-acoes">${a}</div>`;
+  const operacao=["OPERADOR","COMPRADOR"].includes(String(u.perfil));
+  const setorAtual=bdcVinculosDev.get(String(u.id))||"";
+  const setoresOpcoes='<option value="">Selecione o setor</option>'+bdcSetoresDev.map(s=>`<option value="${escaparHTML(s.id)}" ${String(s.id)===String(setorAtual)?'selected':''}>${escaparHTML(s.nome)}</option>`).join("");
+  const blocoSetor=operacao && bdcControleSetoresDisponivel ? `
+   <div class="bdc-setor-bloco">
+     <div class="bdc-setor-linha">
+       <div class="bdc-setor-campo"><label for="bdc-setor-${u.id}">SETOR DO COLABORADOR</label><select id="bdc-setor-${u.id}">${setoresOpcoes}</select></div>
+       <button type="button" class="bdc-setor-salvar" data-salvar-setor="${u.id}">SALVAR SETOR</button>
+     </div>
+     <div class="bdc-setor-nota">Um setor por colaborador. A mudança de setor deve ser confirmada antes de aprovar o acesso.</div>
+   </div>` : '';
+  const setorNome=bdcSetoresDev.find(s=>String(s.id)===String(setorAtual))?.nome || (operacao?"SEM SETOR":"GLOBAL / LEGADO");
+  c.innerHTML=`<div class="dev-usuario-topo"><div><div class="dev-usuario-nome">${escaparHTML(u.nome||"SEM NOME")}</div><div class="dev-usuario-email">${escaparHTML(u.email||"")}</div></div><span class="dev-status ${escaparHTML(u.status)}">${escaparHTML(u.status)}</span></div><div class="dev-usuario-meta"><div class="dev-meta"><span>LOJA BASE</span><strong>${escaparHTML(loja)}</strong></div><div class="dev-meta"><span>PERFIL</span><strong>${escaparHTML(u.perfil||"-")}</strong></div><div class="dev-meta"><span>SETOR ATUAL</span><strong>${escaparHTML(setorNome)}</strong></div></div>${blocoSetor}<div class="dev-acoes">${a}</div>`;
+  const botao=c.querySelector('[data-salvar-setor]');
+  if(botao)botao.addEventListener('click',()=>bdcSalvarSetorUsuario(u.id,botao));
   l.appendChild(c);
  });
 }
+
+async function bdcSalvarSetorUsuario(userId,btn){
+ if(!usuarioAtualEhDev() || !bdcControleSetoresDisponivel)return;
+ const u=usuariosDev.find(x=>String(x.id)===String(userId));
+ const setorId=document.getElementById('bdc-setor-'+userId)?.value;
+ if(!u || !setorId){alert('Selecione um setor antes de salvar.');return;}
+ const setor=bdcSetoresDev.find(s=>String(s.id)===String(setorId));
+ if(!setor){alert('Setor não localizado.');return;}
+ if(!confirm(`Vincular ${u.nome} ao setor ${setor.nome}?\n\nApenas um setor pode estar vinculado ao colaborador.`))return;
+ btn.disabled=true;btn.textContent='SALVANDO...';
+ try{
+   const {error}=await db.rpc('bdc_dev_definir_setor_usuario',{p_usuario_id:userId,p_setor_id:setorId});
+   if(error)throw error;
+   await carregarDadosSetoresDev();
+   renderizarUsuariosDev();
+   mostrarMensagem('mensagemDev',`Setor ${setor.nome} vinculado a ${u.nome}.`,'sucesso-msg');
+ }catch(e){alert('Não foi possível vincular o setor: '+e.message);btn.disabled=false;btn.textContent='SALVAR SETOR';}
+}
+
 async function alterarStatusUsuarioDev(id,status){
  if(!usuarioAtualEhDev())return;
  const u=usuariosDev.find(x=>x.id===id);if(!u)return;
  const acao=status==="APROVADO"?(u.status==="BLOQUEADO"?"desbloquear":"aprovar"):"bloquear";
+ if(status==="APROVADO" && ["OPERADOR","COMPRADOR"].includes(String(u.perfil))){
+   if(!bdcControleSetoresDisponivel){alert("Configure primeiro o controle de setores no Supabase.");return;}
+   const atual=bdcVinculosDev.get(String(u.id));
+   const escolhido=document.getElementById('bdc-setor-'+u.id)?.value;
+   if(!atual || !escolhido || String(atual)!==String(escolhido)){
+      alert("Antes de aprovar/desbloquear, selecione o setor e clique em SALVAR SETOR.");return;
+   }
+ }
  if(!confirm(`Deseja ${acao} o acesso de ${u.nome}?`))return;
  const {error}=await db.rpc("dev_alterar_status_usuario",{p_usuario_id:id,p_status:status});
  if(error){mostrarMensagem("mensagemDev","Não foi possível alterar: "+error.message);return;}
