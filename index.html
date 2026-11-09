@@ -2492,6 +2492,32 @@ V6.10 - FILTRO ÚNICO DE LOJAS (TELA + IMPRESSÃO)
 .previsao-uvas-erro{font-size:12px;color:#ffb4a9;margin-top:8px;font-weight:700}
 @media(max-width:600px){.previsao-uvas input{max-width:100%}}
 @media print{.previsao-uvas{display:none!important}}
+
+/* V6.16.2 — Previsao de chegada no cabecalho impresso da loja (UVAS).
+   Somente impressao; nao muda a visualizacao nem a ordem das colunas. */
+.recebimento-previsao-impressao { display:none; }
+@media print {
+  #telaRecebimento .recebimento-previsao-impressao {
+    display:block !important;
+    visibility:visible !important;
+    margin-top:.6mm !important;
+    padding-top:.5mm !important;
+    border-top:.2mm solid #777 !important;
+    color:#000 !important;
+    font-size:5pt !important;
+    font-weight:700 !important;
+    line-height:1.12 !important;
+    white-space:nowrap !important;
+    text-align:center !important;
+  }
+  #telaRecebimento .recebimento-previsao-impressao strong {
+    font-size:6pt !important;
+    color:#000 !important;
+    font-weight:900 !important;
+    white-space:nowrap !important;
+  }
+}
+
 </style>
 
     
@@ -10309,7 +10335,7 @@ async function carregarCentralRecebimento(){
   const [rL,rP,rPed,rSel,rOcultos]=await Promise.all([
     db.from("lojas").select("id,codigo,nome,ativo").eq("ativo",true).order("codigo"),
     db.from("produtos").select("id,codigo,descricao,gramatura,tipo,ativo").eq("ativo",true).eq("tipo",tipoRecebimentoAtual).order("descricao"),
-    db.from("pedidos").select("id,data,tipo,status_operacional,iniciado_em,ultima_atividade_em,finalizado_em,criado_em,loja_id,usuario_id,usuarios(id,nome,email),lojas(id,codigo,nome),itens_pedido(id,codigo,descricao,gramatura,quantidade,quantidade_original)").gte("data",inicio).lte("data",fim).eq("tipo",tipoRecebimentoAtual).order("data",{ascending:false}).order("criado_em",{ascending:false}),
+    db.from("pedidos").select("id,data,tipo,previsao_chegada,status_operacional,iniciado_em,ultima_atividade_em,finalizado_em,criado_em,loja_id,usuario_id,usuarios(id,nome,email),lojas(id,codigo,nome),itens_pedido(id,codigo,descricao,gramatura,quantidade,quantidade_original)").gte("data",inicio).lte("data",fim).eq("tipo",tipoRecebimentoAtual).order("data",{ascending:false}).order("criado_em",{ascending:false}),
     db.from("pedidos_selecao_comprador").select("loja_id,data,tipo,pedido_id,selecionado_por,selecionado_em").gte("data",inicio).lte("data",fim).eq("tipo",tipoRecebimentoAtual),
     db.from("itens_ocultos_recebimento").select("id,tipo,codigo,descricao,ocultado_por,ocultado_em").eq("tipo",tipoRecebimentoAtual)
   ]);
@@ -10675,9 +10701,15 @@ function renderizarCentralRecebimento(){
         ?`<button class="conflito-btn" onclick="event.stopPropagation();escolherPedidoRecebimento('${l.id}')">${ped?'TROCAR PEDIDO':'ESCOLHER'}</button>`
         :"";
       const btnConferencia=acaoConferenciaCabecalho(ped,grupo,l);
+      // Exclusivo UVAS: mostrar a previsao do pedido oficial desta loja.
+      // Sem pedido ou sem data registrada, nao inventar uma previsao.
+      const previsaoImpressao=(tipoRecebimentoAtual==="UVAS" && ped?.previsao_chegada)
+        ? `<div class="recebimento-previsao-impressao">CHEGADA<br><strong>${dataBrRecebimento(ped.previsao_chegada)}</strong></div>`
+        : "";
       return `<th data-loja-col="${l.id}" class="loja-head ${st.c}">
         ${escaparHTML(l.codigo)}<br>${escaparHTML(l.nome)}
         <div class="loja-status">${st.r}</div>
+        ${previsaoImpressao}
         ${btn}
         ${btnConferencia}
       </th>`;
