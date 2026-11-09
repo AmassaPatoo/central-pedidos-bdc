@@ -2482,6 +2482,16 @@ V6.10 - FILTRO ÚNICO DE LOJAS (TELA + IMPRESSÃO)
     }
 }
 
+
+/* V6.16.1 - UVAS: data prevista para chegada (somente Tela 2) */
+.previsao-uvas{margin-top:18px;padding:15px;border:1px solid #496781;background:#14283a;border-radius:10px}
+.previsao-uvas label{font-weight:900;color:#d6ebff;font-size:12px;letter-spacing:.02em}
+.previsao-uvas label span{color:#ffaaa4}
+.previsao-uvas input{max-width:280px;min-height:44px;background:#202e3b;color:#eef5fb;border:1px solid #55758f}
+.previsao-uvas-ajuda{font-size:11px;color:#a9bfd0;margin-top:8px;line-height:1.5}
+.previsao-uvas-erro{font-size:12px;color:#ffb4a9;margin-top:8px;font-weight:700}
+@media(max-width:600px){.previsao-uvas input{max-width:100%}}
+@media print{.previsao-uvas{display:none!important}}
 </style>
 
     
@@ -4495,6 +4505,14 @@ V6.15 - STATUS OPERACIONAL BASEADO EM ATIVIDADE REAL
 
 
 
+
+    <!-- V6.16.1: Previsão de chegada exclusiva para UVAS -->
+    <div id="painelPrevisaoUvas" class="previsao-uvas oculto">
+      <label for="dataPrevisaoUvas">📅 PREVISÃO DE CHEGADA DAS UVAS <span aria-label="obrigatório">*</span></label>
+      <input id="dataPrevisaoUvas" type="date" autocomplete="off" aria-describedby="ajudaPrevisaoUvas erroPrevisaoUvas">
+      <div id="ajudaPrevisaoUvas" class="previsao-uvas-ajuda">Campo obrigatório para revisar o pedido de UVAS. Selecione um dia útil (segunda a sexta-feira).</div>
+      <div id="erroPrevisaoUvas" class="previsao-uvas-erro oculto" role="alert"></div>
+    </div>
 
     <div class="acoes">
 
@@ -7069,6 +7087,7 @@ V6.7 - CENTRAL DE RECEBIMENTO (COMPRADOR / DEV)
 
 
         montarTabela();
+        atualizarPainelPrevisaoUvas();
 
 
 
@@ -7576,7 +7595,58 @@ V6.7 - CENTRAL DE RECEBIMENTO (COMPRADOR / DEV)
 
 
 
+    // V6.16.1 - Esta informação é exclusiva do tipo UVAS.
+    function atualizarPainelPrevisaoUvas(){
+        const campo=document.getElementById('painelPrevisaoUvas');
+        const input=document.getElementById('dataPrevisaoUvas');
+        if(!campo || !input) return;
+        const uvas=pedidoAtual?.tipo==='UVAS';
+        campo.classList.toggle('oculto',!uvas);
+        input.required=uvas;
+        if(uvas){
+            input.min=pedidoAtual.data;
+            input.value=pedidoAtual.dataPrevisaoChegada || '';
+        }else{
+            input.required=false;
+            input.value='';
+        }
+        const erro=document.getElementById('erroPrevisaoUvas');
+        if(erro){erro.textContent='';erro.classList.add('oculto');}
+    }
+
+    function validarPrevisaoUvas(){
+        if(pedidoAtual?.tipo!=='UVAS') return true;
+        const input=document.getElementById('dataPrevisaoUvas');
+        const erro=document.getElementById('erroPrevisaoUvas');
+        const data=input?.value || '';
+        let mensagem='';
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(data)){
+            mensagem='Informe a data prevista para a chegada das uvas.';
+        }else{
+            const [ano,mes,dia]=data.split('-').map(Number);
+            const d=new Date(Date.UTC(ano,mes-1,dia));
+            const diaSemana=d.getUTCDay();
+            if(d.toISOString().slice(0,10)!==data) mensagem='Data inválida.';
+            else if(data<pedidoAtual.data) mensagem='A previsão não pode ser anterior à data do pedido.';
+            else if(diaSemana===0 || diaSemana===6) mensagem='A previsão de chegada deve ser em dia útil (segunda a sexta-feira).';
+        }
+        if(mensagem){
+            erro.textContent=mensagem;
+            erro.classList.remove('oculto');
+            input.setAttribute('aria-invalid','true');
+            input.focus();
+            return false;
+        }
+        erro.textContent='';
+        erro.classList.add('oculto');
+        input.removeAttribute('aria-invalid');
+        pedidoAtual.dataPrevisaoChegada=data;
+        return true;
+    }
+
     function revisarPedido(){
+        if(!validarPrevisaoUvas()) return;
+
 
 
 
@@ -7757,6 +7827,8 @@ V6.7 - CENTRAL DE RECEBIMENTO (COMPRADOR / DEV)
             </div>
 
 
+
+            ${pedidoAtual.tipo==='UVAS' ? `<div class="resumo-box" style="grid-column:1/-1;border:1px solid #3d79ad"><span>PREVISÃO DE CHEGADA</span><strong>${formatarData(pedidoAtual.dataPrevisaoChegada)}</strong></div>` : ''}
 
             `;
 
@@ -8396,6 +8468,7 @@ V6.7 - CENTRAL DE RECEBIMENTO (COMPRADOR / DEV)
                 id,
 
                 data,
+                previsao_chegada,
 
                 tipo,
 
@@ -8575,6 +8648,7 @@ V6.7 - CENTRAL DE RECEBIMENTO (COMPRADOR / DEV)
 
 
             data:p.data,
+            dataPrevisaoChegada:p.previsao_chegada || null,
 
 
 
@@ -9153,6 +9227,8 @@ V6.7 - CENTRAL DE RECEBIMENTO (COMPRADOR / DEV)
                     ⏳ Pedido enviado e aguardando conferência do comprador.
                 </div>
             ` : ""}
+
+            ${pedido.tipo==='UVAS' && pedido.dataPrevisaoChegada ? `<div class="resumo-box" style="grid-column:1/-1;border:1px solid #3d79ad"><span>PREVISÃO DE CHEGADA</span><strong>${formatarData(pedido.dataPrevisaoChegada)}</strong></div>` : ''}
 
             `;
 
@@ -9819,6 +9895,8 @@ async function alterarStatusUsuarioDev(id,status){
         itensRevisao=[];
 
         tipoSelecionado="";
+        const previsao=document.getElementById('dataPrevisaoUvas');
+        if(previsao) previsao.value='';
 
 
 
@@ -10054,6 +10132,18 @@ finalizarPedido=async function(){
   if(!pedidoAtual || itensRevisao.length===0) return;
   const btn=document.getElementById("btnFinalizar"); btn.disabled=true; btn.textContent="ENVIANDO PEDIDO...";
   try{
+    // A previsão de UVAS deve ser gravada antes da finalização.
+    if(pedidoAtual.tipo==='UVAS'){
+      if(!validarPrevisaoUvas()){
+        mostrarTela('tela2');
+        return;
+      }
+      const {error:erroPrevisao}=await db.rpc('bdc_definir_previsao_uvas',{
+        p_pedido_id:pedidoRascunhoId,
+        p_data_prevista:pedidoAtual.dataPrevisaoChegada
+      });
+      if(erroPrevisao) throw new Error('Não foi possível salvar a previsão de chegada: '+erroPrevisao.message);
+    }
     await sincronizarRascunhoCompleto();
     const {data,error}=await db.rpc("finalizar_pedido_rascunho",{p_pedido_id:pedidoRascunhoId,p_observacao:pedidoAtual.observacao||null});
     if(error) throw error;
@@ -10061,6 +10151,10 @@ finalizarPedido=async function(){
     ultimoPedidoFinalizado={id:pedidoRascunhoId,...pedidoAtual,itens:[...itensRevisao],totalItens:itensRevisao.length,finalizadoEm:agora.toISOString()};
     pedidoRascunhoId=null;
     if(typeof montarResumoSucesso==="function") montarResumoSucesso(ultimoPedidoFinalizado);
+    if(pedidoAtual.tipo==='UVAS'){
+      const resumo=document.getElementById('resumoSucesso');
+      resumo.insertAdjacentHTML('beforeend',`<div class="resumo-box" style="grid-column:1/-1"><span>PREVISÃO DE CHEGADA</span><strong>${formatarData(pedidoAtual.dataPrevisaoChegada)}</strong></div>`);
+    }
     mostrarTela("telaSucesso");
   }catch(e){console.error(e);alert("Erro ao finalizar pedido: "+(e.message||e));}
   finally{btn.disabled=false;btn.textContent="FINALIZAR PEDIDO";}
