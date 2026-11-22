@@ -3367,7 +3367,7 @@ V6.15 - STATUS OPERACIONAL BASEADO EM ATIVIDADE REAL
 .bdc-setor-linha{display:flex;gap:9px;align-items:flex-end;flex-wrap:wrap}
 .bdc-setor-campo{flex:1;min-width:170px}
 .bdc-setor-campo label{font-size:10px;color:#a8d8ef;font-weight:800;margin-bottom:6px}
-.bdc-setor-campo select{font-size:12px;min-height:39px;padding:7px 9px;width:100%;background:#1a3041;color:#edf7ff;border:1px solid #46647d}
+.bdc-setor-campo input,.bdc-setor-campo select{font-size:12px;min-height:39px;padding:7px 9px;width:100%;background:#1a3041;color:#edf7ff;border:1px solid #46647d}
 .bdc-setor-salvar{border:1px solid #207a9a;background:#087fac;color:#fff;border-radius:7px;padding:10px 12px;min-height:39px;font-size:11px;font-weight:800;cursor:pointer}
 .bdc-setor-salvar:disabled{opacity:.55;cursor:wait}
 .bdc-setor-nota{font-size:10px;color:#aebfcf;margin-top:7px}
@@ -5041,6 +5041,14 @@ V6.15 - STATUS OPERACIONAL BASEADO EM ATIVIDADE REAL
 <section id="telaDev" class="oculto"><div class="card">
 <h2>⚙️ Painel DEV</h2><div class="pedido-info" style="margin-bottom:18px">Aprovação e controle de acesso dos usuários.</div>
 <div id="mensagemDev" class="mensagem erro oculto"></div>
+<form id="bdcCadastroSetor" class="bdc-setor-bloco" onsubmit="bdcCadastrarSetor(this); return false;">
+  <h3>Cadastrar setor</h3>
+  <div class="bdc-setor-linha">
+    <div class="bdc-setor-campo"><label for="bdcNovoSetorNome">Nome do setor</label><input id="bdcNovoSetorNome" name="nome" required maxlength="80" placeholder="Cafeteria"></div>
+    <button type="submit" class="bdc-setor-salvar">CADASTRAR SETOR</button>
+  </div>
+  <div id="bdcMensagemSetor" class="mensagem oculto" role="status"></div>
+</form>
 <div class="dev-menu-grid">
   <button class="dev-menu-card" onclick="abrirDevProdutos()">
     <strong>🥬 PRODUTOS</strong>
@@ -9801,6 +9809,35 @@ async function abrirPainelDev(){
 let bdcSetoresDev=[];
 let bdcVinculosDev=new Map();
 let bdcControleSetoresDisponivel=false;
+
+async function bdcCadastrarSetor(form){
+  if(!usuarioAtualEhDev())return;
+  const botao=form.querySelector('button[type="submit"]');
+  if(botao.disabled)return;
+  const nome=form.elements.nome.value.trim();
+  esconderMensagem("bdcMensagemSetor");
+  if(!nome){
+    mostrarMensagem("bdcMensagemSetor","Informe o nome do setor.");
+    return;
+  }
+  botao.disabled=true;
+  try{
+    const {error}=await db.rpc("bdc_dev_cadastrar_setor",{p_nome:nome});
+    if(error){
+      const mensagem=error.code==="PGRST202"
+        ? "Instale o SQL 03_CADASTRO_SETORES no Supabase."
+        : error.message;
+      mostrarMensagem("bdcMensagemSetor",mensagem);
+      return;
+    }
+    form.reset();
+    mostrarMensagem("bdcMensagemSetor","Setor cadastrado com sucesso.","sucesso-msg");
+    await carregarDadosSetoresDev();
+    renderizarUsuariosDev();
+  }finally{
+    botao.disabled=false;
+  }
+}
 
 async function carregarDadosSetoresDev(){
   bdcControleSetoresDisponivel=false;
