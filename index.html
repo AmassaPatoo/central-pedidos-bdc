@@ -3433,6 +3433,7 @@ V6.15 - STATUS OPERACIONAL BASEADO EM ATIVIDADE REAL
 
 
 
+                <button id="btnSetoresDev" type="button" class="dev-atalho oculto" onclick="abrirSetoresDev()">SETORES</button>
                 <button id="btnPainelDev" class="dev-atalho oculto" onclick="abrirPainelDev()">⚙️ DEV <span id="badgePendentesDev" class="dev-badge oculto">0</span></button>
 
                 <button id="btnCentralRecebimentoTopo" class="recebimento-atalho oculto" onclick="abrirCentralRecebimento()">📥 RECEBIMENTO</button>
@@ -4143,6 +4144,23 @@ V6.15 - STATUS OPERACIONAL BASEADO EM ATIVIDADE REAL
     ====================================================== -->
 
 
+
+    <section id="telaSetoresDev" class="oculto">
+  <div class="card">
+    <h2>Setores</h2>
+    <div class="dev-menu-grid">
+      <button type="button" class="dev-menu-card" onclick="abrirPedidosHortifrutiDev()">
+        <strong>Hortifruti</strong>
+        <span>Abrir pedidos</span>
+      </button>
+      <button type="button" class="dev-menu-card" onclick="abrirPainelDev()">
+        <strong>Painel DEV</strong>
+        <span>Cadastrar setores e gerenciar acessos</span>
+      </button>
+    </div>
+    <div id="bdcOutrosSetoresDev" class="dev-menu-grid" aria-live="polite"></div>
+  </div>
+</section>
 
     <section id="tela1">
 
@@ -5629,6 +5647,7 @@ V6.7 - CENTRAL DE RECEBIMENTO (COMPRADOR / DEV)
         const tela=event.state?.tela;
 
         const telasPermitidas=[
+            "telaSetoresDev",
             "tela1",
             "tela2",
             "tela3",
@@ -5642,7 +5661,15 @@ V6.7 - CENTRAL DE RECEBIMENTO (COMPRADOR / DEV)
             "telaDevProdutoForm"
         ];
 
-        if(!telasPermitidas.includes(tela)){
+        if(tela==="telaSetoresDev" && usuarioAtualEhDev()){
+            void abrirSetoresDev({registrarHistorico:false,semAnimacao:true});
+            return;
+        }
+        if(!telasPermitidas.includes(tela) || tela==="telaSetoresDev"){
+            if(usuarioAtualEhDev()){
+                void abrirSetoresDev({substituirHistorico:true,semAnimacao:true});
+                return;
+            }
             mostrarTela(
                 "tela1",
                 {substituirHistorico:true,semAnimacao:true}
@@ -6709,7 +6736,8 @@ V6.7 - CENTRAL DE RECEBIMENTO (COMPRADOR / DEV)
 
         if(typeof configurarInterfaceRecebimento === "function") configurarInterfaceRecebimento();
 
-        mostrarTela("tela1",{substituirHistorico:true});
+        if(usuarioAtualEhDev()) void abrirSetoresDev({substituirHistorico:true});
+        else mostrarTela("tela1",{substituirHistorico:true});
 
 
 
@@ -9789,7 +9817,39 @@ async function alterarAtivoProdutoDev(id,ativo){
 
 /* V6.0 - PAINEL DEV */
 function usuarioAtualEhDev(){return !!usuarioAtual&&usuarioAtual.perfil==="DEV"&&usuarioAtual.ativo===true&&usuarioAtual.status==="APROVADO";}
+function abrirPedidosHortifrutiDev(){
+    if(usuarioAtualEhDev()) mostrarTela("tela1");
+}
+
+async function abrirSetoresDev(opcoes={}){
+    if(!usuarioAtualEhDev()) return;
+    mostrarTela("telaSetoresDev",opcoes);
+    const lista=document.getElementById("bdcOutrosSetoresDev");
+    lista.textContent="Carregando setores...";
+    const {data,error}=await db.rpc("bdc_dev_listar_setores");
+    if(!usuarioAtualEhDev()) return;
+    lista.textContent="";
+    if(error){
+        lista.textContent="Não foi possível carregar os demais setores. Use Setores para tentar novamente.";
+        return;
+    }
+
+    for(const setor of data || []){
+        const texto=String(setor.codigo || "")+" "+String(setor.nome || "");
+        if(/horti[ _-]*fr[uú]ti/i.test(texto)) continue;
+        const card=document.createElement("div");
+        card.className="dev-menu-card";
+        const nome=document.createElement("strong");
+        nome.textContent=setor.nome;
+        const estado=document.createElement("span");
+        estado.textContent="Pedidos ainda indisponíveis";
+        card.append(nome,estado);
+        lista.append(card);
+    }
+}
+
 function configurarInterfaceDev(){
+ document.getElementById("btnSetoresDev").classList.toggle("oculto",!usuarioAtualEhDev());
  const b=document.getElementById("btnPainelDev");
  b.classList.toggle("oculto",!usuarioAtualEhDev());
  if(usuarioAtualEhDev()) atualizarBadgePendentesDev();
